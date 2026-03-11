@@ -8,3 +8,4 @@ dist
 wrangler.toml
 .tools
 tsconfig.tsbuildinfo
+.wrangler
