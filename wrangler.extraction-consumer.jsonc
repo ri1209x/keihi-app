@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "keihi-extraction-consumer",
+  "main": "src/workers/extraction-consumer.ts",
+  "compatibility_date": "2026-03-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "keihi-prod",
+      "database_id": "7f236a8d-4ac4-4192-bd8c-ff8decb6f352"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RECEIPTS_BUCKET",
+      "bucket_name": "keihi-receipts-prod"
+    }
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "keihi-extraction-prod",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5
+      }
+    ]
+  },
+  "vars": {
+    "AI_GATEWAY_BASE_URL": "https://generativelanguage.googleapis.com"
+  }
+}

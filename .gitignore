@@ -1,0 +1,10 @@
+node_modules
+.next
+.open-next
+coverage
+dist
+.env.local
+.dev.vars
+wrangler.toml
+.tools
+tsconfig.tsbuildinfo

@@ -1,0 +1,42 @@
+{
+  "name": "keihi-keisan-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Expense calculation and journal application app for tax accountants and sole proprietors",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 execute keihi_local --local --file=./drizzle/migrations/0000_init.sql",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy:web": "opennextjs-cloudflare deploy",
+    "cf:deploy:consumer": "wrangler deploy -c wrangler.extraction-consumer.jsonc"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.2",
+    "next": "16.1.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-hook-form": "^7.66.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260304.0",
+    "@opennextjs/cloudflare": "^1.8.5",
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "drizzle-kit": "^0.31.6",
+    "eslint": "^9.37.0",
+    "eslint-config-next": "16.1.6",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.39.0"
+  }
+}
+
