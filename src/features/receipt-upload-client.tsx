@@ -1,18 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import type { AppRole } from "@/lib/auth/demo-users";
 
 type UploadStep = "idle" | "issuing-url" | "uploading" | "queueing" | "done" | "error";
 
-export function ReceiptUploadClient() {
-  const [clientId, setClientId] = useState("demo-client");
-  const [tenantId, setTenantId] = useState("demo-tenant");
+type ReceiptUploadClientProps = {
+  canUpload: boolean;
+  defaultClientId: string;
+  organizationId: string;
+};
+
+export function ReceiptUploadClient(props: ReceiptUploadClientProps) {
+  const [clientId, setClientId] = useState(props.defaultClientId);
   const [file, setFile] = useState<File | null>(null);
   const [step, setStep] = useState<UploadStep>("idle");
   const [message, setMessage] = useState("未実行");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (!props.canUpload) {
+      setStep("error");
+      setMessage("現在のロールではアップロードできません。operator または admin でログインしてください。");
+      return;
+    }
 
     if (!file) {
       setStep("error");
@@ -28,7 +40,6 @@ export function ReceiptUploadClient() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-tenant-id": tenantId,
         },
         body: JSON.stringify({
           clientId,
@@ -70,7 +81,6 @@ export function ReceiptUploadClient() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-tenant-id": tenantId,
         },
         body: JSON.stringify({
           receiptId: initJson.receiptId,
@@ -96,11 +106,10 @@ export function ReceiptUploadClient() {
   return (
     <section>
       <h2>レシートアップロード</h2>
+      <p>
+        現在の組織: <span className="mono">{props.organizationId}</span>
+      </p>
       <form onSubmit={onSubmit} className="stack">
-        <label>
-          Tenant ID
-          <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} />
-        </label>
         <label>
           Client ID
           <input value={clientId} onChange={(e) => setClientId(e.target.value)} />
@@ -113,7 +122,10 @@ export function ReceiptUploadClient() {
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
         </label>
-        <button type="submit" disabled={step === "issuing-url" || step === "uploading" || step === "queueing"}>
+        <button
+          type="submit"
+          disabled={!props.canUpload || step === "issuing-url" || step === "uploading" || step === "queueing"}
+        >
           Upload and Enqueue
         </button>
       </form>

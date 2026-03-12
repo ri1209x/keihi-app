@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AppRole } from "@/lib/auth/demo-users";
 
 type JournalItem = {
   id: string;
@@ -33,11 +34,23 @@ type ExtractionResponse = {
   items: ExtractionItem[];
 };
 
+type JournalWorkflowClientProps = {
+  role: AppRole;
+};
+
 function fmtDate(epochSec: number): string {
   return new Date(epochSec * 1000).toLocaleString("ja-JP");
 }
 
-export function JournalWorkflowClient() {
+function canSuggest(role: AppRole): boolean {
+  return role === "operator" || role === "admin";
+}
+
+function canApprove(role: AppRole): boolean {
+  return role === "approver" || role === "admin";
+}
+
+export function JournalWorkflowClient(props: JournalWorkflowClientProps) {
   const [journals, setJournals] = useState<JournalItem[]>([]);
   const [completedJobs, setCompletedJobs] = useState<ExtractionItem[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -93,7 +106,6 @@ export function JournalWorkflowClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           journalEntryId,
-          requesterUserId: "operator",
           approverUserId: "approver",
         }),
       });
@@ -113,7 +125,7 @@ export function JournalWorkflowClient() {
       const res = await fetch(`/api/approvals/${approvalId}/approve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approverUserId: "approver" }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error(await res.text());
       setMessage(`承認しました: approvalId=${approvalId}`);
@@ -163,9 +175,13 @@ export function JournalWorkflowClient() {
                   <td className="mono">{job.jobId}</td>
                   <td className="mono">{job.receiptId}</td>
                   <td>
-                    <button type="button" disabled={busy === job.jobId} onClick={() => void createSuggestion(job.jobId)}>
-                      仕訳候補作成
-                    </button>
+                    {canSuggest(props.role) ? (
+                      <button type="button" disabled={busy === job.jobId} onClick={() => void createSuggestion(job.jobId)}>
+                        仕訳候補作成
+                      </button>
+                    ) : (
+                      <span>権限なし</span>
+                    )}
                   </td>
                 </tr>
               ))
@@ -208,15 +224,19 @@ export function JournalWorkflowClient() {
                     {j.approvalId ? (
                       j.approvalStatus === "approved" ? (
                         <span>承認済み</span>
-                      ) : (
+                      ) : canApprove(props.role) ? (
                         <button type="button" disabled={busy === j.approvalId} onClick={() => void approve(j.approvalId!)}>
                           承認
                         </button>
+                      ) : (
+                        <span>承認者待ち</span>
                       )
-                    ) : (
+                    ) : canSuggest(props.role) ? (
                       <button type="button" disabled={busy === j.id} onClick={() => void requestApproval(j.id)}>
                         承認申請
                       </button>
+                    ) : (
+                      <span>権限なし</span>
                     )}
                   </td>
                 </tr>

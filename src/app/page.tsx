@@ -1,4 +1,7 @@
+import { getCurrentSession } from "@/lib/auth/session";
+import { getRuntimeBindings } from "@/lib/cloudflare/context";
 import { getExecutionEnvironment } from "@/lib/cloudflare/env";
+import { AuthSessionClient } from "@/features/auth-session-client";
 import { ReceiptUploadClient } from "@/features/receipt-upload-client";
 import { ExtractionResultsClient } from "@/features/extraction-results-client";
 import { JournalWorkflowClient } from "@/features/journal-workflow-client";
@@ -13,10 +16,13 @@ const tasks = [
   { id: "T-007", name: "仕訳候補生成 + 承認フロー", status: "Done" },
   { id: "T-008", name: "CSVエクスポート", status: "Done" },
   { id: "T-009", name: "監査ログ記録", status: "Done" },
+  { id: "T-010", name: "認証/認可", status: "Done" },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
   const env = getExecutionEnvironment();
+  const bindings = await getRuntimeBindings();
+  const session = await getCurrentSession(bindings);
 
   return (
     <main className="container">
@@ -33,9 +39,23 @@ export default function HomePage() {
           ))}
         </ul>
       </section>
-      <ReceiptUploadClient />
-      <ExtractionResultsClient />
-      <JournalWorkflowClient />
+      <AuthSessionClient />
+      {session ? (
+        <>
+          <ReceiptUploadClient
+            canUpload={session.role === "operator" || session.role === "admin"}
+            defaultClientId={session.defaultClientId}
+            organizationId={session.organizationId}
+          />
+          <ExtractionResultsClient />
+          <JournalWorkflowClient role={session.role} />
+        </>
+      ) : (
+        <section>
+          <h2>ログインが必要です</h2>
+          <p>上のデモユーザーでログインすると、組織とロールに応じた画面/API を利用できます。</p>
+        </section>
+      )}
     </main>
   );
 }
