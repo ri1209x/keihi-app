@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { insertExtractionJob } from "@/lib/db/repository";
-import { getTenantHeader } from "@/lib/cloudflare/request-context";
+import { getActorHeader, getTenantHeader } from "@/lib/cloudflare/request-context";
+import { insertAuditLog, insertExtractionJob } from "@/lib/db/repository";
 import { ExtractionQueueMessageSchema } from "@/types/queue/extraction";
 
 const EnqueueSchema = z.object({
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
   }
 
   const tenantId = await getTenantHeader();
+  const actorUserId = await getActorHeader();
   const message = ExtractionQueueMessageSchema.parse({
     id: crypto.randomUUID(),
     receiptId: parsed.data.receiptId,
@@ -44,6 +45,20 @@ export async function POST(request: Request) {
 
   await bindings.EXTRACTION_QUEUE.send(message);
   await insertExtractionJob({ db: bindings.DB, message });
+  await insertAuditLog({
+    db: bindings.DB,
+    organizationId: tenantId,
+    actorUserId,
+    action: "extraction.queued",
+    targetType: "extraction_job",
+    targetId: message.id,
+    payload: JSON.stringify({
+      receiptId: message.receiptId,
+      objectKey: message.objectKey,
+      provider: message.provider,
+      clientId: message.clientId,
+    }),
+  });
 
   return NextResponse.json({
     queued: true,

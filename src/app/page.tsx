@@ -11,6 +11,8 @@ const tasks = [
   { id: "T-005", name: "Gemini連携", status: "Done" },
   { id: "T-006", name: "解析結果確認UI", status: "Done" },
   { id: "T-007", name: "仕訳候補生成 + 承認フロー", status: "Done" },
+  { id: "T-008", name: "CSVエクスポート", status: "Done" },
+  { id: "T-009", name: "監査ログ記録", status: "Done" },
 ];
 
 export default function HomePage() {
