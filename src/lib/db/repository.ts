@@ -158,40 +158,42 @@ export async function failExtractionJob(params: {
 export async function listRecentExtractions(params: {
   db?: D1Database;
   limit?: number;
+  organizationId?: string;
 }): Promise<RecentExtractionItem[]> {
   if (!params.db) {
     return [];
   }
 
   const safeLimit = Math.min(Math.max(params.limit ?? 20, 1), 100);
-  const result = await params.db
-    .prepare(
-      `SELECT
-         j.id AS job_id,
-         j.receipt_id,
-         j.status,
-         j.attempts,
-         j.provider,
-         r.r2_key,
-         j.created_at,
-         er.raw_json
-       FROM extraction_jobs j
-       LEFT JOIN receipts r ON r.id = j.receipt_id
-       LEFT JOIN extraction_results er ON er.id = j.id
-       ORDER BY j.created_at DESC
-       LIMIT ?1`,
-    )
-    .bind(safeLimit)
-    .all<{
-      job_id: string;
-      receipt_id: string;
-      status: string;
-      attempts: number;
-      provider: string;
-      r2_key: string;
-      created_at: number;
-      raw_json: string | null;
-    }>();
+  const baseSql = `SELECT
+      j.id AS job_id,
+      j.receipt_id,
+      j.status,
+      j.attempts,
+      j.provider,
+      r.r2_key,
+      j.created_at,
+      er.raw_json
+    FROM extraction_jobs j
+    LEFT JOIN receipts r ON r.id = j.receipt_id
+    LEFT JOIN extraction_results er ON er.id = j.id`;
+
+  const statement = params.organizationId
+    ? params.db
+        .prepare(`${baseSql} WHERE r.organization_id = ?1 ORDER BY j.created_at DESC LIMIT ?2`)
+        .bind(params.organizationId, safeLimit)
+    : params.db.prepare(`${baseSql} ORDER BY j.created_at DESC LIMIT ?1`).bind(safeLimit);
+
+  const result = await statement.all<{
+    job_id: string;
+    receipt_id: string;
+    status: string;
+    attempts: number;
+    provider: string;
+    r2_key: string;
+    created_at: number;
+    raw_json: string | null;
+  }>();
 
   return (result.results ?? []).map((row) => ({
     jobId: row.job_id,
@@ -208,33 +210,51 @@ export async function listRecentExtractions(params: {
 export async function getExtractionSourceByJobId(params: {
   db?: D1Database;
   jobId: string;
+  organizationId?: string;
 }): Promise<JournalSuggestionSource | null> {
   if (!params.db) {
     return null;
   }
 
-  const row = await params.db
-    .prepare(
-      `SELECT
-         j.id AS job_id,
-         j.receipt_id,
-         r.organization_id,
-         r.client_id,
-         er.raw_json
-       FROM extraction_jobs j
-       JOIN receipts r ON r.id = j.receipt_id
-       JOIN extraction_results er ON er.id = j.id
-       WHERE j.id = ?1
-       LIMIT 1`,
-    )
-    .bind(params.jobId)
-    .first<{
-      job_id: string;
-      receipt_id: string;
-      organization_id: string;
-      client_id: string;
-      raw_json: string;
-    }>();
+  const statement = params.organizationId
+    ? params.db
+        .prepare(
+          `SELECT
+             j.id AS job_id,
+             j.receipt_id,
+             r.organization_id,
+             r.client_id,
+             er.raw_json
+           FROM extraction_jobs j
+           JOIN receipts r ON r.id = j.receipt_id
+           JOIN extraction_results er ON er.id = j.id
+           WHERE j.id = ?1 AND r.organization_id = ?2
+           LIMIT 1`,
+        )
+        .bind(params.jobId, params.organizationId)
+    : params.db
+        .prepare(
+          `SELECT
+             j.id AS job_id,
+             j.receipt_id,
+             r.organization_id,
+             r.client_id,
+             er.raw_json
+           FROM extraction_jobs j
+           JOIN receipts r ON r.id = j.receipt_id
+           JOIN extraction_results er ON er.id = j.id
+           WHERE j.id = ?1
+           LIMIT 1`,
+        )
+        .bind(params.jobId);
+
+  const row = await statement.first<{
+    job_id: string;
+    receipt_id: string;
+    organization_id: string;
+    client_id: string;
+    raw_json: string;
+  }>();
 
   if (!row) {
     return null;
@@ -301,25 +321,36 @@ export async function upsertJournalEntryFromSuggestion(params: {
 export async function getJournalEntryAuditContext(params: {
   db?: D1Database;
   journalEntryId: string;
+  organizationId?: string;
 }): Promise<JournalEntryAuditContext | null> {
   if (!params.db) {
     return null;
   }
 
-  const row = await params.db
-    .prepare(
-      `SELECT id, organization_id, receipt_id, source_job_id
-       FROM journal_entries
-       WHERE id = ?1
-       LIMIT 1`,
-    )
-    .bind(params.journalEntryId)
-    .first<{
-      id: string;
-      organization_id: string;
-      receipt_id: string | null;
-      source_job_id: string | null;
-    }>();
+  const statement = params.organizationId
+    ? params.db
+        .prepare(
+          `SELECT id, organization_id, receipt_id, source_job_id
+           FROM journal_entries
+           WHERE id = ?1 AND organization_id = ?2
+           LIMIT 1`,
+        )
+        .bind(params.journalEntryId, params.organizationId)
+    : params.db
+        .prepare(
+          `SELECT id, organization_id, receipt_id, source_job_id
+           FROM journal_entries
+           WHERE id = ?1
+           LIMIT 1`,
+        )
+        .bind(params.journalEntryId);
+
+  const row = await statement.first<{
+    id: string;
+    organization_id: string;
+    receipt_id: string | null;
+    source_job_id: string | null;
+  }>();
 
   if (!row) {
     return null;
@@ -363,28 +394,43 @@ export async function createApprovalRequest(params: {
 export async function getApprovalAuditContext(params: {
   db?: D1Database;
   approvalId: string;
+  organizationId?: string;
 }): Promise<ApprovalAuditContext | null> {
   if (!params.db) {
     return null;
   }
 
-  const row = await params.db
-    .prepare(
-      `SELECT
-         a.id,
-         a.journal_entry_id,
-         j.organization_id
-       FROM approval_requests a
-       JOIN journal_entries j ON j.id = a.journal_entry_id
-       WHERE a.id = ?1
-       LIMIT 1`,
-    )
-    .bind(params.approvalId)
-    .first<{
-      id: string;
-      journal_entry_id: string;
-      organization_id: string;
-    }>();
+  const statement = params.organizationId
+    ? params.db
+        .prepare(
+          `SELECT
+             a.id,
+             a.journal_entry_id,
+             j.organization_id
+           FROM approval_requests a
+           JOIN journal_entries j ON j.id = a.journal_entry_id
+           WHERE a.id = ?1 AND j.organization_id = ?2
+           LIMIT 1`,
+        )
+        .bind(params.approvalId, params.organizationId)
+    : params.db
+        .prepare(
+          `SELECT
+             a.id,
+             a.journal_entry_id,
+             j.organization_id
+           FROM approval_requests a
+           JOIN journal_entries j ON j.id = a.journal_entry_id
+           WHERE a.id = ?1
+           LIMIT 1`,
+        )
+        .bind(params.approvalId);
+
+  const row = await statement.first<{
+    id: string;
+    journal_entry_id: string;
+    organization_id: string;
+  }>();
 
   if (!row) {
     return null;
@@ -460,49 +506,51 @@ export async function insertAuditLog(params: {
 export async function listRecentJournalEntries(params: {
   db?: D1Database;
   limit?: number;
+  organizationId?: string;
 }): Promise<JournalEntryItem[]> {
   if (!params.db) {
     return [];
   }
 
   const safeLimit = Math.min(Math.max(params.limit ?? 20, 1), 100);
-  const result = await params.db
-    .prepare(
-      `SELECT
-         j.id,
-         j.source_job_id,
-         j.status,
-         j.event_date,
-         j.debit_account,
-         j.credit_account,
-         j.amount,
-         j.tax_category,
-         j.memo,
-         j.created_at,
-         a.id AS approval_id,
-         a.status AS approval_status,
-         a.approver_user_id
-       FROM journal_entries j
-       LEFT JOIN approval_requests a ON a.journal_entry_id = j.id
-       ORDER BY j.created_at DESC
-       LIMIT ?1`,
-    )
-    .bind(safeLimit)
-    .all<{
-      id: string;
-      source_job_id: string | null;
-      status: string;
-      event_date: string;
-      debit_account: string | null;
-      credit_account: string | null;
-      amount: number | null;
-      tax_category: string | null;
-      memo: string | null;
-      created_at: number;
-      approval_id: string | null;
-      approval_status: string | null;
-      approver_user_id: string | null;
-    }>();
+  const baseSql = `SELECT
+      j.id,
+      j.source_job_id,
+      j.status,
+      j.event_date,
+      j.debit_account,
+      j.credit_account,
+      j.amount,
+      j.tax_category,
+      j.memo,
+      j.created_at,
+      a.id AS approval_id,
+      a.status AS approval_status,
+      a.approver_user_id
+    FROM journal_entries j
+    LEFT JOIN approval_requests a ON a.journal_entry_id = j.id`;
+
+  const statement = params.organizationId
+    ? params.db
+        .prepare(`${baseSql} WHERE j.organization_id = ?1 ORDER BY j.created_at DESC LIMIT ?2`)
+        .bind(params.organizationId, safeLimit)
+    : params.db.prepare(`${baseSql} ORDER BY j.created_at DESC LIMIT ?1`).bind(safeLimit);
+
+  const result = await statement.all<{
+    id: string;
+    source_job_id: string | null;
+    status: string;
+    event_date: string;
+    debit_account: string | null;
+    credit_account: string | null;
+    amount: number | null;
+    tax_category: string | null;
+    memo: string | null;
+    created_at: number;
+    approval_id: string | null;
+    approval_status: string | null;
+    approver_user_id: string | null;
+  }>();
 
   return (result.results ?? []).map((row) => ({
     id: row.id,

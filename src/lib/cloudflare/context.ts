@@ -6,6 +6,7 @@ export type RuntimeBindings = {
   EXTRACTION_QUEUE?: Queue;
   APP_STAGE?: string;
   AI_PROVIDER?: string;
+  AUTH_SESSION_SECRET?: string;
   UPLOAD_TOKEN_SECRET?: string;
   MAX_UPLOAD_BYTES?: string;
   AI_GATEWAY_BASE_URL?: string;
@@ -20,6 +21,7 @@ export async function getRuntimeBindings(): Promise<RuntimeBindings> {
     return {
       APP_STAGE: process.env.APP_STAGE,
       AI_PROVIDER: process.env.AI_PROVIDER,
+      AUTH_SESSION_SECRET: process.env.AUTH_SESSION_SECRET,
       UPLOAD_TOKEN_SECRET: process.env.UPLOAD_TOKEN_SECRET,
       MAX_UPLOAD_BYTES: process.env.MAX_UPLOAD_BYTES,
       AI_GATEWAY_BASE_URL: process.env.AI_GATEWAY_BASE_URL,

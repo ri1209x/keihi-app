@@ -4,6 +4,7 @@ export type AppBindings = {
   EXTRACTION_QUEUE: Queue;
   APP_STAGE: string;
   AI_PROVIDER: string;
+  AUTH_SESSION_SECRET: string;
   UPLOAD_TOKEN_SECRET: string;
   MAX_UPLOAD_BYTES: string;
   AI_GATEWAY_BASE_URL: string;
