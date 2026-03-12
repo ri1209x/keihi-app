@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { getCurrentSession } from "@/lib/auth/session";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { getActorHeader } from "@/lib/cloudflare/request-context";
 import { insertAuditLog, listApprovedJournalEntriesForExport } from "@/lib/db/repository";
 
 function escapeCsvCell(value: string | number | null): string {
@@ -54,28 +54,26 @@ function toCsv(items: Awaited<ReturnType<typeof listApprovedJournalEntriesForExp
 
 export async function GET() {
   const bindings = await getRuntimeBindings();
-  const actorUserId = await getActorHeader();
-  const items = await listApprovedJournalEntriesForExport({ db: bindings.DB });
-  const fileDate = new Date().toISOString().slice(0, 10);
-  const countsByOrganization = new Map<string, number>();
-
-  for (const item of items) {
-    countsByOrganization.set(item.organizationId, (countsByOrganization.get(item.organizationId) ?? 0) + 1);
+  const session = await getCurrentSession(bindings);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await Promise.all(
-    Array.from(countsByOrganization.entries()).map(([organizationId, count]) =>
-      insertAuditLog({
-        db: bindings.DB,
-        organizationId,
-        actorUserId,
-        action: "journal.exported_csv",
-        targetType: "journal_export",
-        targetId: `journal-entries-${fileDate}.csv`,
-        payload: JSON.stringify({ count }),
-      }),
-    ),
-  );
+  const items = await listApprovedJournalEntriesForExport({
+    db: bindings.DB,
+    organizationId: session.organizationId,
+  });
+  const fileDate = new Date().toISOString().slice(0, 10);
+
+  await insertAuditLog({
+    db: bindings.DB,
+    organizationId: session.organizationId,
+    actorUserId: session.id,
+    action: "journal.exported_csv",
+    targetType: "journal_export",
+    targetId: `journal-entries-${fileDate}.csv`,
+    payload: JSON.stringify({ count: items.length }),
+  });
 
   return new NextResponse(`\uFEFF${toCsv(items)}`, {
     headers: {

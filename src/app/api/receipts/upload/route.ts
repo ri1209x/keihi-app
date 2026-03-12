@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { hasRequiredRole, getCurrentSession } from "@/lib/auth/session";
 import { UploadRequestSchema } from "@/features/upload-schema";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { getTenantHeader } from "@/lib/cloudflare/request-context";
 import { createUploadToken } from "@/lib/security/upload-token";
 
 const TOKEN_TTL_MS = 5 * 60 * 1000;
@@ -18,6 +18,14 @@ export async function POST(request: Request) {
   }
 
   const bindings = await getRuntimeBindings();
+  const session = await getCurrentSession(bindings);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!hasRequiredRole(session.role, ["operator"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const secret = bindings.UPLOAD_TOKEN_SECRET;
   if (!secret) {
     return NextResponse.json(
@@ -26,16 +34,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const tenantId = await getTenantHeader();
   const receiptId = crypto.randomUUID();
   const safeName = parsed.data.fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
-  const objectKey = `${tenantId}/${receiptId}-${safeName}`;
+  const objectKey = `${session.organizationId}/${receiptId}-${safeName}`;
 
   const token = await createUploadToken(
     {
       receiptId,
       objectKey,
-      tenantId,
+      tenantId: session.organizationId,
       clientId: parsed.data.clientId,
       exp: Date.now() + TOKEN_TTL_MS,
     },

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { canAccessOrganization, getCurrentSession, hasRequiredRole } from "@/lib/auth/session";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { getActorHeader } from "@/lib/cloudflare/request-context";
 import { insertAuditLog, insertUploadedReceipt } from "@/lib/db/repository";
 import { verifyUploadToken } from "@/lib/security/upload-token";
 
@@ -19,8 +19,15 @@ export async function PUT(
   }
 
   const bindings = await getRuntimeBindings();
-  const secret = bindings.UPLOAD_TOKEN_SECRET;
+  const session = await getCurrentSession(bindings);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!hasRequiredRole(session.role, ["operator"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
+  const secret = bindings.UPLOAD_TOKEN_SECRET;
   if (!secret) {
     return NextResponse.json(
       { error: "UPLOAD_TOKEN_SECRET is not configured" },
@@ -29,7 +36,7 @@ export async function PUT(
   }
 
   const verified = await verifyUploadToken(token, secret);
-  if (!verified || verified.receiptId !== receiptId) {
+  if (!verified || verified.receiptId !== receiptId || !canAccessOrganization(session, verified.tenantId)) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 
@@ -52,7 +59,6 @@ export async function PUT(
   }
 
   const contentType = request.headers.get("content-type") ?? "application/octet-stream";
-  const actorUserId = await getActorHeader();
 
   await bindings.RECEIPTS_BUCKET.put(verified.objectKey, bytes, {
     httpMetadata: {
@@ -76,7 +82,7 @@ export async function PUT(
   await insertAuditLog({
     db: bindings.DB,
     organizationId: verified.tenantId,
-    actorUserId,
+    actorUserId: session.id,
     action: "receipt.uploaded",
     targetType: "receipt",
     targetId: verified.receiptId,

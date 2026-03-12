@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getCurrentSession, hasRequiredRole } from "@/lib/auth/session";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { getActorHeader } from "@/lib/cloudflare/request-context";
 import {
   getExtractionSourceByJobId,
   insertAuditLog,
@@ -49,8 +49,19 @@ export async function POST(request: Request) {
   }
 
   const bindings = await getRuntimeBindings();
-  const actorUserId = await getActorHeader();
-  const source = await getExtractionSourceByJobId({ db: bindings.DB, jobId: parsed.data.jobId });
+  const session = await getCurrentSession(bindings);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!hasRequiredRole(session.role, ["operator"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const source = await getExtractionSourceByJobId({
+    db: bindings.DB,
+    jobId: parsed.data.jobId,
+    organizationId: session.organizationId,
+  });
   if (!source) {
     return NextResponse.json({ error: "Extraction result not found" }, { status: 404 });
   }
@@ -81,7 +92,7 @@ export async function POST(request: Request) {
   await insertAuditLog({
     db: bindings.DB,
     organizationId: source.organizationId,
-    actorUserId,
+    actorUserId: session.id,
     action: "journal.suggested",
     targetType: "journal_entry",
     targetId: journalEntryId,

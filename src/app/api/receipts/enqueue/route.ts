@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getCurrentSession, hasRequiredRole } from "@/lib/auth/session";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { getActorHeader, getTenantHeader } from "@/lib/cloudflare/request-context";
 import { insertAuditLog, insertExtractionJob } from "@/lib/db/repository";
 import { ExtractionQueueMessageSchema } from "@/types/queue/extraction";
 
@@ -23,19 +23,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const tenantId = await getTenantHeader();
-  const actorUserId = await getActorHeader();
+  const bindings = await getRuntimeBindings();
+  const session = await getCurrentSession(bindings);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!hasRequiredRole(session.role, ["operator"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const message = ExtractionQueueMessageSchema.parse({
     id: crypto.randomUUID(),
     receiptId: parsed.data.receiptId,
     objectKey: parsed.data.objectKey,
     provider: parsed.data.provider,
-    tenantId,
+    tenantId: session.organizationId,
     clientId: parsed.data.clientId,
     enqueuedAt: new Date().toISOString(),
   });
 
-  const bindings = await getRuntimeBindings();
   if (!bindings.EXTRACTION_QUEUE) {
     return NextResponse.json(
       { error: "EXTRACTION_QUEUE binding is not available" },
@@ -47,8 +53,8 @@ export async function POST(request: Request) {
   await insertExtractionJob({ db: bindings.DB, message });
   await insertAuditLog({
     db: bindings.DB,
-    organizationId: tenantId,
-    actorUserId,
+    organizationId: session.organizationId,
+    actorUserId: session.id,
     action: "extraction.queued",
     targetType: "extraction_job",
     targetId: message.id,
