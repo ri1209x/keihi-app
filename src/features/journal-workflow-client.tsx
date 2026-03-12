@@ -129,12 +129,18 @@ export function JournalWorkflowClient() {
     <section>
       <div className="row-between">
         <h2>仕訳候補と承認</h2>
-        <button type="button" onClick={() => void loadAll()}>
-          Reload
-        </button>
+        <div className="actions-row">
+          <a className="button-link" href="/api/exports/journals" download>
+            承認済みCSVをDL
+          </a>
+          <button type="button" onClick={() => void loadAll()}>
+            Reload
+          </button>
+        </div>
       </div>
 
       <p>{message}</p>
+      <p>承認済み仕訳は CSV としてダウンロードできます。</p>
 
       <h3>仕訳候補未作成の解析ジョブ</h3>
       <div className="table-wrap">

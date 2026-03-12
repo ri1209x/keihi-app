@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { getExtractionSourceByJobId, upsertJournalEntryFromSuggestion } from "@/lib/db/repository";
+import { getActorHeader } from "@/lib/cloudflare/request-context";
+import {
+  getExtractionSourceByJobId,
+  insertAuditLog,
+  upsertJournalEntryFromSuggestion,
+} from "@/lib/db/repository";
 
 const SuggestSchema = z.object({
   jobId: z.string().min(1),
@@ -44,6 +49,7 @@ export async function POST(request: Request) {
   }
 
   const bindings = await getRuntimeBindings();
+  const actorUserId = await getActorHeader();
   const source = await getExtractionSourceByJobId({ db: bindings.DB, jobId: parsed.data.jobId });
   if (!source) {
     return NextResponse.json({ error: "Extraction result not found" }, { status: 404 });
@@ -54,6 +60,9 @@ export async function POST(request: Request) {
   const paymentMethod = extracted.paymentMethod ?? "cash";
   const amount = extracted.totalAmount ?? 0;
   const eventDate = extracted.issuedDate ? extracted.issuedDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const debitAccount = pickDebitAccount(summary);
+  const creditAccount = pickCreditAccount(paymentMethod);
+  const taxCategory = pickTaxCategory(extracted.taxRate);
 
   const journalEntryId = await upsertJournalEntryFromSuggestion({
     db: bindings.DB,
@@ -63,10 +72,27 @@ export async function POST(request: Request) {
     clientId: source.clientId,
     eventDate,
     memo: summary,
-    debitAccount: pickDebitAccount(summary),
-    creditAccount: pickCreditAccount(paymentMethod),
+    debitAccount,
+    creditAccount,
     amount,
-    taxCategory: pickTaxCategory(extracted.taxRate),
+    taxCategory,
+  });
+
+  await insertAuditLog({
+    db: bindings.DB,
+    organizationId: source.organizationId,
+    actorUserId,
+    action: "journal.suggested",
+    targetType: "journal_entry",
+    targetId: journalEntryId,
+    payload: JSON.stringify({
+      sourceJobId: source.jobId,
+      receiptId: source.receiptId,
+      debitAccount,
+      creditAccount,
+      amount,
+      taxCategory,
+    }),
   });
 
   return NextResponse.json({

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRuntimeBindings } from "@/lib/cloudflare/context";
-import { insertUploadedReceipt } from "@/lib/db/repository";
+import { getActorHeader } from "@/lib/cloudflare/request-context";
+import { insertAuditLog, insertUploadedReceipt } from "@/lib/db/repository";
 import { verifyUploadToken } from "@/lib/security/upload-token";
 
 const DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -51,6 +52,7 @@ export async function PUT(
   }
 
   const contentType = request.headers.get("content-type") ?? "application/octet-stream";
+  const actorUserId = await getActorHeader();
 
   await bindings.RECEIPTS_BUCKET.put(verified.objectKey, bytes, {
     httpMetadata: {
@@ -69,6 +71,21 @@ export async function PUT(
     tenantId: verified.tenantId,
     clientId: verified.clientId,
     objectKey: verified.objectKey,
+  });
+
+  await insertAuditLog({
+    db: bindings.DB,
+    organizationId: verified.tenantId,
+    actorUserId,
+    action: "receipt.uploaded",
+    targetType: "receipt",
+    targetId: verified.receiptId,
+    payload: JSON.stringify({
+      objectKey: verified.objectKey,
+      clientId: verified.clientId,
+      contentType,
+      byteLength: bytes.byteLength,
+    }),
   });
 
   return NextResponse.json({

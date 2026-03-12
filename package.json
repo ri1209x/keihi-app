@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 execute keihi_local --local --file=./drizzle/migrations/0000_init.sql",
+    "db:migrate:local": "wrangler d1 execute keihi-prod --local --file=./drizzle/migrations/0000_init.sql -c wrangler.jsonc && wrangler d1 execute keihi-prod --local --file=./drizzle/migrations/0001_journal_columns.sql -c wrangler.jsonc",
     "cf:build": "opennextjs-cloudflare build",
     "cf:deploy:web": "opennextjs-cloudflare deploy",
     "cf:deploy:consumer": "wrangler deploy -c wrangler.extraction-consumer.jsonc"

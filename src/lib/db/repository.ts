@@ -35,6 +35,35 @@ export type JournalEntryItem = {
   approverUserId: string | null;
 };
 
+export type ExportJournalEntryItem = {
+  id: string;
+  approvalId: string | null;
+  organizationId: string;
+  clientId: string;
+  receiptId: string | null;
+  sourceJobId: string | null;
+  eventDate: string;
+  debitAccount: string | null;
+  creditAccount: string | null;
+  amount: number | null;
+  taxCategory: string | null;
+  memo: string | null;
+  approvedAtEpoch: number | null;
+};
+
+export type JournalEntryAuditContext = {
+  journalEntryId: string;
+  organizationId: string;
+  receiptId: string | null;
+  sourceJobId: string | null;
+};
+
+export type ApprovalAuditContext = {
+  approvalId: string;
+  journalEntryId: string;
+  organizationId: string;
+};
+
 export async function insertUploadedReceipt(params: {
   db?: D1Database;
   receiptId: string;
@@ -269,6 +298,41 @@ export async function upsertJournalEntryFromSuggestion(params: {
   return id;
 }
 
+export async function getJournalEntryAuditContext(params: {
+  db?: D1Database;
+  journalEntryId: string;
+}): Promise<JournalEntryAuditContext | null> {
+  if (!params.db) {
+    return null;
+  }
+
+  const row = await params.db
+    .prepare(
+      `SELECT id, organization_id, receipt_id, source_job_id
+       FROM journal_entries
+       WHERE id = ?1
+       LIMIT 1`,
+    )
+    .bind(params.journalEntryId)
+    .first<{
+      id: string;
+      organization_id: string;
+      receipt_id: string | null;
+      source_job_id: string | null;
+    }>();
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    journalEntryId: row.id,
+    organizationId: row.organization_id,
+    receiptId: row.receipt_id,
+    sourceJobId: row.source_job_id,
+  };
+}
+
 export async function createApprovalRequest(params: {
   db?: D1Database;
   journalEntryId: string;
@@ -294,6 +358,43 @@ export async function createApprovalRequest(params: {
     .run();
 
   return id;
+}
+
+export async function getApprovalAuditContext(params: {
+  db?: D1Database;
+  approvalId: string;
+}): Promise<ApprovalAuditContext | null> {
+  if (!params.db) {
+    return null;
+  }
+
+  const row = await params.db
+    .prepare(
+      `SELECT
+         a.id,
+         a.journal_entry_id,
+         j.organization_id
+       FROM approval_requests a
+       JOIN journal_entries j ON j.id = a.journal_entry_id
+       WHERE a.id = ?1
+       LIMIT 1`,
+    )
+    .bind(params.approvalId)
+    .first<{
+      id: string;
+      journal_entry_id: string;
+      organization_id: string;
+    }>();
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    approvalId: row.id,
+    journalEntryId: row.journal_entry_id,
+    organizationId: row.organization_id,
+  };
 }
 
 export async function approveRequest(params: {
@@ -323,6 +424,36 @@ export async function approveRequest(params: {
        )`,
     )
     .bind(params.approvalId)
+    .run();
+}
+
+export async function insertAuditLog(params: {
+  db?: D1Database;
+  organizationId: string;
+  actorUserId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  payload?: string;
+}): Promise<void> {
+  if (!params.db) {
+    return;
+  }
+
+  await params.db
+    .prepare(
+      `INSERT INTO audit_logs (id, organization_id, actor_user_id, action, target_type, target_id, payload)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+    )
+    .bind(
+      crypto.randomUUID(),
+      params.organizationId,
+      params.actorUserId,
+      params.action,
+      params.targetType,
+      params.targetId,
+      params.payload ?? null,
+    )
     .run();
 }
 
@@ -387,5 +518,68 @@ export async function listRecentJournalEntries(params: {
     approvalId: row.approval_id,
     approvalStatus: row.approval_status,
     approverUserId: row.approver_user_id,
+  }));
+}
+
+export async function listApprovedJournalEntriesForExport(params: {
+  db?: D1Database;
+  organizationId?: string;
+}): Promise<ExportJournalEntryItem[]> {
+  if (!params.db) {
+    return [];
+  }
+
+  const baseSql = `SELECT
+      j.id,
+      j.organization_id,
+      j.client_id,
+      j.receipt_id,
+      j.source_job_id,
+      j.event_date,
+      j.debit_account,
+      j.credit_account,
+      j.amount,
+      j.tax_category,
+      j.memo,
+      a.id AS approval_id,
+      a.approved_at
+    FROM journal_entries j
+    LEFT JOIN approval_requests a ON a.journal_entry_id = j.id
+    WHERE j.status = 'approved'`;
+
+  const statement = params.organizationId
+    ? params.db.prepare(`${baseSql} AND j.organization_id = ?1 ORDER BY COALESCE(a.approved_at, j.created_at) DESC, j.created_at DESC`).bind(params.organizationId)
+    : params.db.prepare(`${baseSql} ORDER BY COALESCE(a.approved_at, j.created_at) DESC, j.created_at DESC`);
+
+  const result = await statement.all<{
+    id: string;
+    organization_id: string;
+    client_id: string;
+    receipt_id: string | null;
+    source_job_id: string | null;
+    event_date: string;
+    debit_account: string | null;
+    credit_account: string | null;
+    amount: number | null;
+    tax_category: string | null;
+    memo: string | null;
+    approval_id: string | null;
+    approved_at: number | null;
+  }>();
+
+  return (result.results ?? []).map((row) => ({
+    id: row.id,
+    approvalId: row.approval_id,
+    organizationId: row.organization_id,
+    clientId: row.client_id,
+    receiptId: row.receipt_id,
+    sourceJobId: row.source_job_id,
+    eventDate: row.event_date,
+    debitAccount: row.debit_account,
+    creditAccount: row.credit_account,
+    amount: row.amount == null ? null : Number(row.amount),
+    taxCategory: row.tax_category,
+    memo: row.memo,
+    approvedAtEpoch: row.approved_at == null ? null : Number(row.approved_at),
   }));
 }
