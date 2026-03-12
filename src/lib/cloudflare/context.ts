@@ -14,18 +14,23 @@ export type RuntimeBindings = {
 };
 
 export async function getRuntimeBindings(): Promise<RuntimeBindings> {
+  const envBindings: RuntimeBindings = {
+    APP_STAGE: process.env.APP_STAGE,
+    AI_PROVIDER: process.env.AI_PROVIDER,
+    AUTH_SESSION_SECRET: process.env.AUTH_SESSION_SECRET,
+    UPLOAD_TOKEN_SECRET: process.env.UPLOAD_TOKEN_SECRET,
+    MAX_UPLOAD_BYTES: process.env.MAX_UPLOAD_BYTES,
+    AI_GATEWAY_BASE_URL: process.env.AI_GATEWAY_BASE_URL,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  };
+
   try {
     const context = await getCloudflareContext({ async: true });
-    return context.env as RuntimeBindings;
-  } catch {
     return {
-      APP_STAGE: process.env.APP_STAGE,
-      AI_PROVIDER: process.env.AI_PROVIDER,
-      AUTH_SESSION_SECRET: process.env.AUTH_SESSION_SECRET,
-      UPLOAD_TOKEN_SECRET: process.env.UPLOAD_TOKEN_SECRET,
-      MAX_UPLOAD_BYTES: process.env.MAX_UPLOAD_BYTES,
-      AI_GATEWAY_BASE_URL: process.env.AI_GATEWAY_BASE_URL,
-      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      ...(context.env as RuntimeBindings),
+      ...Object.fromEntries(Object.entries(envBindings).filter(([, value]) => value != null)),
     };
+  } catch {
+    return envBindings;
   }
 }

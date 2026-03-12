@@ -8,7 +8,9 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit --incremental false",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 execute keihi-prod --local --file=./drizzle/migrations/0000_init.sql -c wrangler.jsonc && wrangler d1 execute keihi-prod --local --file=./drizzle/migrations/0001_journal_columns.sql -c wrangler.jsonc",
     "cf:build": "opennextjs-cloudflare build",
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260304.0",
     "@opennextjs/cloudflare": "^1.8.5",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.7.2",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
@@ -39,4 +42,6 @@
     "wrangler": "^4.39.0"
   }
 }
+
+
 

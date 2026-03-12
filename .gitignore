@@ -9,3 +9,6 @@ wrangler.toml
 .tools
 tsconfig.tsbuildinfo
 .wrangler
+playwright-report
+test-results
+
