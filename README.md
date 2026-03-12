@@ -33,6 +33,7 @@ Cloudflare 前提の経費計算・仕訳申請アプリの実装リポジトリ
 - `npm run lint`
 - `npm run typecheck`
 - `npm run build`
+- `npm run test:e2e`
 - `npm run cf:build`
 - `npm run cf:deploy:web`
 - `npm run cf:deploy:consumer`
